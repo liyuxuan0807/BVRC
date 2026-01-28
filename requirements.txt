@@ -1,0 +1,20 @@
+
+torch>=2.0.0
+torchvision>=0.15.0
+numpy>=1.21.0
+pandas>=1.3.0
+scipy>=1.7.0
+scikit-learn>=1.0.0
+Pillow>=9.0.0
+tqdm>=4.62.0
+xgboost>=1.6.0              # For BVRC-X (XGBoost regressor)
+tabpfn>=0.0.13              # For BVRC-T (TabPFN regressor)
+transformers>=4.30.0        # For BVRC-D (Diffusion + CLIP) and ViT training
+tokenizers>=0.13.0          # Required by transformers
+sentencepiece>=0.1.99       # For some transformer models
+protobuf>=3.20.0            # For model serialization
+accelerate>=0.20.0          # For efficient model loading
+safetensors>=0.3.0          # For safe model weight storage
+huggingface-hub>=0.14.0     # For downloading pretrained models
+
+
