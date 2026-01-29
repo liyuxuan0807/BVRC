@@ -56,7 +56,8 @@ models/*.ckpt
 *.csv
 *.tsv
 data/
-datasets/
+datasets/*
+!datasets/.gitkeep
 
 # Temporary files
 *.log

@@ -30,9 +30,121 @@ BVRC_code/
 ├── models/                   # Directory for pre-trained models
 │   ├── (place your pretrained checkpoints here)
 │   └── (e.g., resnet50_baseline.pth, vit_model/)
+├── datasets/                 # Directory for datasets
+│   └── (place your datasets here)
 ├── results/                  # Output directory for correction results
 ├── requirements.txt          # Python dependencies
+├── INSTALL.md                # Installation guide
 └── README.md                 # This file
+```
+
+## Datasets
+
+BVRC has been tested on multiple regression datasets across different domains. Below are the supported datasets with download links.
+
+### Age Estimation Datasets
+
+| Dataset | Domain | Samples | Label | Download Link |
+|---------|--------|---------|-------|---------------|
+| **UTKFace** | Face Age | ~23K | Age (0-116) | [Download](https://susanqq.github.io/UTKFace/) |
+| **MORPH** | Face Age | ~55K | Age (16-77) | [Download](https://uncw.edu/research/innovation/commercialization/technology-portfolio/morph.html) |
+| **AgeDB** | Face Age | ~16K | Age (1-101) | [Download](https://ibug.doc.ic.ac.uk/resources/agedb/) |
+| **CLAP2016** | Face Age | ~7.5K | Age (1-95) | [Download](https://chalearnlap.cvc.uab.cat/dataset/26/description/) |
+
+### Other Regression Datasets
+
+| Dataset | Domain | Samples | Label | Download Link |
+|---------|--------|---------|-------|---------------|
+| **RSNA Bone Age** | Medical | ~12K | Bone Age (months) | [Kaggle](https://www.kaggle.com/datasets/kmader/rsna-bone-age) |
+| **ForestDK** | Ecology | ~40K | Tree Cover (%) | [Download](https://sid.erda.dk/share_redirect/f1Hmpeh6O2) |
+| **MPIIFaceGaze** | Gaze Estimation | ~45K | Gaze Angle (degrees) | [Download](https://darus.uni-stuttgart.de/dataset.xhtml?persistentId=doi%3A10.18419%2Fdarus-3240) |
+
+### Dataset Preparation
+
+1. **Download** your chosen dataset from the links above
+2. **Organize** the dataset in the following structure:
+
+```
+datasets/
+└── {dataset_name}/
+    ├── images/              # All image files
+    │   ├── image001.jpg
+    │   ├── image002.jpg
+    │   └── ...
+    ├── train.csv           # Training annotations
+    ├── val.csv             # Validation annotations (optional)
+    └── test.csv            # Test annotations
+```
+
+3. **Prepare CSV files** with the following format:
+
+```csv
+filename,age
+image001.jpg,25
+image002.jpg,32
+image003.jpg,18
+...
+```
+
+**CSV Requirements:**
+- `filename`: Image filename (must match files in `images/` directory)
+- `age`: Label value (can be renamed via `--label_col` parameter)
+- Additional columns are allowed but will be ignored
+
+### Example: UTKFace Dataset
+
+After downloading UTKFace:
+
+```bash
+# 1. Extract images
+unzip UTKFace.zip -d datasets/UTKFace/images/
+
+# 2. Create CSV files (example using Python)
+python -c "
+import os
+import pandas as pd
+
+image_dir = 'datasets/UTKFace/images/'
+data = []
+
+for fname in os.listdir(image_dir):
+    if fname.endswith('.jpg'):
+        age = int(fname.split('_')[0])  # UTKFace format: age_gender_race_date.jpg
+        data.append({'filename': fname, 'age': age})
+
+df = pd.DataFrame(data)
+df.sample(frac=0.8, random_state=42).to_csv('datasets/UTKFace/train.csv', index=False)
+df.drop(df.sample(frac=0.8, random_state=42).index).to_csv('datasets/UTKFace/test.csv', index=False)
+"
+
+# 3. Run BVRC
+python BVRC_main.py \
+    --regressor X \
+    --annotations datasets/UTKFace/train.csv \
+    --image_dir datasets/UTKFace/images \
+    --checkpoint models/resnet50_baseline.pth \
+    --output_dir results/
+```
+
+### Custom Datasets
+
+To use your own dataset:
+
+1. Organize images in a single directory
+2. Create a CSV file with at least `filename` and label columns
+3. Adjust `--filename_col` and `--label_col` parameters if using different column names
+
+**Example with custom columns:**
+
+```bash
+python BVRC_main.py \
+    --regressor X \
+    --annotations my_dataset.csv \
+    --image_dir my_images/ \
+    --filename_col "image_path" \
+    --label_col "target_value" \
+    --checkpoint models/resnet50_baseline.pth \
+    --output_dir results/
 ```
 
 ## Installation
@@ -116,15 +228,15 @@ python BVRC_main.py \
 - `--std_threshold`: Standard deviation threshold for correction (default: 2.0)
 - `--n_folds`: Number of cross-validation folds (default: 5)
 
-### 2. Training with Corrected Labels
+### 2. Model Training and Evaluation
 
-Use `script/train.py` to train models on corrected datasets and evaluate performance.
+Use `script/train.py` to train models on corrected datasets and automatically evaluate on test sets. The script supports training with validation monitoring and final test evaluation.
 
 #### Supported Models
 
-- ResNet50
-- VGG16
-- Vision Transformer (ViT)
+- **ResNet50** - Recommended for most tasks
+- **VGG16** - Good for transfer learning
+- **Vision Transformer (ViT)** - Best accuracy, requires more resources
 
 #### Train with ResNet50
 
@@ -149,6 +261,8 @@ python script/train.py \
 
 #### Train with VGG16
 
+VGG16 works well with transfer learning. Use smaller learning rate when fine-tuning.
+
 ```bash
 python script/train.py \
     --model vgg16 \
@@ -156,13 +270,21 @@ python script/train.py \
     --train_image_dir /path/to/images \
     --val_annotations val.csv \
     --val_image_dir /path/to/images \
+    --test_annotations test.csv \
+    --test_image_dir /path/to/images \
     --output_dir ./runs \
-    --epochs 100
+    --experiment_tag "VGG16_corrected" \
+    --epochs 100 \
+    --batch_size 128 \
+    --lr 1e-4 \
+    --augmentation medium \
+    --early_stopping \
+    --use_amp
 ```
 
 #### Train with ViT
 
-Requires path to pre-trained ViT model.
+Vision Transformer requires pre-trained model path and typically uses lower learning rate.
 
 ```bash
 python script/train.py \
@@ -172,20 +294,46 @@ python script/train.py \
     --train_image_dir /path/to/images \
     --val_annotations val.csv \
     --val_image_dir /path/to/images \
+    --test_annotations test.csv \
+    --test_image_dir /path/to/images \
     --output_dir ./runs \
+    --experiment_tag "ViT_corrected" \
+    --epochs 100 \
+    --batch_size 64 \
     --lr 2e-5 \
-    --epochs 100
+    --early_stopping \
+    --use_amp
 ```
 
-#### Training Parameters
+**Note**: ViT uses its own image preprocessing via `ViTImageProcessor`, so `--augmentation` parameter is ignored for ViT models.
 
+#### Key Parameters
+
+**Model Configuration:**
 - `--model`: Model architecture (`resnet50`, `vgg16`, `vit`)
-- `--freeze_backbone`: Freeze backbone weights (transfer learning)
-- `--augmentation`: Data augmentation strength (`none`, `light`, `medium`, `strong`)
+- `--vit_model_path`: Path to pre-trained ViT model (required for `vit`)
+- `--freeze_backbone`: Freeze backbone weights for transfer learning
+
+**Training Hyperparameters:**
+- `--epochs`: Number of training epochs (default: 100)
+- `--batch_size`: Batch size (default: 128)
+- `--lr`: Learning rate (ResNet/VGG: 1e-4, ViT: 2e-5)
+- `--weight_decay`: Weight decay for regularization (default: 1e-4)
+- `--gradient_clip`: Gradient clipping threshold (default: 1.0)
+
+**Data Augmentation:**
+- `--augmentation`: Augmentation strength for CNN models (`none`, `light`, `medium`, `strong`)
+- `--image_size`: Input image size (default: 256)
+
+**Optimization:**
 - `--optimizer`: Optimizer type (`adam`, `adamw`, `sgd`)
 - `--scheduler`: Learning rate scheduler (`plateau`, `cosine`, `none`)
+- `--scheduler_patience`: Patience for ReduceLROnPlateau (default: 10)
+
+**Training Control:**
 - `--early_stopping`: Enable early stopping
-- `--use_amp`: Use automatic mixed precision training
+- `--early_stopping_patience`: Patience for early stopping (default: 15)
+- `--use_amp`: Use automatic mixed precision training (recommended)
 
 ## Output
 
@@ -284,21 +432,6 @@ python script/train.py \
 - **Pros**: Can capture complex data distributions, flexible
 - **Cons**: Requires pre-trained model, computationally expensive, needs careful tuning
 - **Best for**: Research experiments with available pre-trained diffusion models
-
-## CSV Format
-
-Your annotation CSV files should follow this format:
-
-```csv
-filename,age
-image001.jpg,25
-image002.jpg,32
-image003.jpg,18
-...
-```
-
-- `filename`: Image filename (relative to `--image_dir`)
-- `age`: Label value (can be any continuous value; column name configurable via `--label_col`)
 
 ## Tips and Best Practices
 
