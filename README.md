@@ -468,8 +468,6 @@ python script/train.py \
 
 ## License
 
-This project is licensed under the MIT License.
 
 ## Contact
 
-For questions and feedback, please open an issue on GitHub or contact [your-email@example.com].
