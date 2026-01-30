@@ -237,10 +237,43 @@ def BVRC(features, labels, regressor, threshold=3.0, std_threshold=2.0,
     f_x = np.zeros(noise_count)
     EY = np.zeros(noise_count)
     std_devs = np.zeros(noise_count)
+    E_abs_diff = np.zeros(noise_count)  # Expected absolute deviation
     
     for i in range(noise_count):
-        mode, mean, std = compute_kde_statistics(predictions_stage2[i])
-        f_x[i], EY[i], std_devs[i] = mode, mean, std
+        samples = predictions_stage2[i]
+        
+        if len(samples) < 2 or np.std(samples) < 1e-6:
+            f_x[i] = np.mean(samples)
+            EY[i] = np.mean(samples)
+            std_devs[i] = 0.0
+            E_abs_diff[i] = np.abs(y_noise[i] - np.mean(samples))
+            continue
+        
+        try:
+            kde = gaussian_kde(samples)
+            xi = np.linspace(samples.min() - 1, samples.max() + 1, 1000)
+            f = kde(xi)
+            dx = xi[1] - xi[0]
+            
+            # Mode (peak of KDE)
+            f_x[i] = xi[np.argmax(f)]
+            
+            # Mean (expectation)
+            EY[i] = np.trapz(xi * f, dx=dx)
+            
+            # Standard deviation
+            second_moment = np.trapz(xi**2 * f, dx=dx)
+            std_devs[i] = np.sqrt(max(0, second_moment - EY[i]**2))
+            
+            # Expected absolute deviation: E[|y_i - x|] = ∫|y_i - x| * f(x) dx
+            abs_diff = np.abs(y_noise[i] - xi)
+            E_abs_diff[i] = np.trapz(abs_diff * f, dx=dx) / np.trapz(f, dx=dx)
+            
+        except:
+            f_x[i] = np.median(samples)
+            EY[i] = np.mean(samples)
+            std_devs[i] = np.std(samples)
+            E_abs_diff[i] = np.abs(y_noise[i] - np.mean(samples))
 
     # Compute adaptive threshold T
     TT = 2 * (f_x - y_noise) * (f_x - EY)
@@ -248,11 +281,9 @@ def BVRC(features, labels, regressor, threshold=3.0, std_threshold=2.0,
     T2 = np.sqrt(np.maximum(TT, 0))
     T = (T1 + T2) / 2
     
-    Interval = np.column_stack([f_x - T, f_x + T])
-    
     # Correction conditions
-    condition1 = (y_noise < Interval[:, 0]) | (y_noise > Interval[:, 1])
-    condition2 = np.abs(y_noise - f_x) > std_threshold * std_devs
+    condition1 = np.abs(f_x - y_noise) > T  
+    condition2 = E_abs_diff > std_threshold * std_devs  
     correct_mask = condition1 & condition2
     
     corrected_count = np.sum(correct_mask)
